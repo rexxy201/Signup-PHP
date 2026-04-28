@@ -2,8 +2,9 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes/db.php';
 require_once __DIR__ . '/includes/functions.php';
-$paystackKey = getSetting('paystack_public_key');
-$signupNote  = getSetting('signup_note');
+$paystackKey      = getSetting('paystack_public_key');
+$signupNote       = getSetting('signup_note');
+$installationCost = (int)getSetting('installation_cost', '0');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -81,15 +82,35 @@ body{background:#f8f9fa;font-family:'Segoe UI',sans-serif}
   <div class="page active" id="page1">
     <div class="form-section">
       <h5 class="fw-bold mb-1">Choose Your Plan</h5>
-      <p class="text-muted small mb-3">Select the internet plan that fits your needs</p>
+      <p class="text-muted small mb-3">First select your area, then pick the internet plan that fits your needs</p>
 
-      <h6 class="text-muted small fw-semibold text-uppercase mb-2">Residential</h6>
-      <div class="row g-2 mb-3" id="residentialPlans"></div>
+      <!-- Zone selector -->
+      <div class="mb-4">
+        <label class="form-label small fw-semibold">Area / Zone *</label>
+        <select class="form-select" id="zoneSelect" onchange="onZoneChange()">
+          <option value="">— Select your area —</option>
+          <optgroup label="Lagos">
+            <option value="default">Rest of Lagos (General)</option>
+            <option value="oniru">Oniru</option>
+          </optgroup>
+          <optgroup label="FCT / Abuja">
+            <option value="abuja_banex">Abuja / Banex</option>
+          </optgroup>
+        </select>
+      </div>
 
-      <h6 class="text-muted small fw-semibold text-uppercase mb-2 mt-3">Corporate</h6>
-      <div class="row g-2 mb-3" id="corporatePlans"></div>
+      <div id="plansList" style="display:none">
+        <h6 class="text-muted small fw-semibold text-uppercase mb-2">Residential</h6>
+        <div class="row g-2 mb-3" id="residentialPlans"></div>
+
+        <h6 class="text-muted small fw-semibold text-uppercase mb-2 mt-3">Corporate</h6>
+        <div class="row g-2 mb-3" id="corporatePlans"></div>
+      </div>
+
+      <div id="plansLoading" class="text-center py-3 text-muted small" style="display:none"><div class="spinner-border spinner-border-sm me-2"></div>Loading plans…</div>
 
       <div id="planError" class="text-danger small mt-2" style="display:none">Please select a plan to continue.</div>
+      <div id="zoneError" class="text-danger small mt-2" style="display:none">Please select your area first.</div>
       <button class="btn btn-orange w-100 mt-3 py-2" onclick="nextStep(1)">Continue <i class="bi bi-arrow-right ms-1"></i></button>
     </div>
   </div>
@@ -250,36 +271,50 @@ body{background:#f8f9fa;font-family:'Segoe UI',sans-serif}
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-const PAYSTACK_KEY = <?= json_encode($paystackKey) ?>;
+const PAYSTACK_KEY       = <?= json_encode($paystackKey) ?>;
+const INSTALLATION_COST  = <?= json_encode($installationCost) ?>;  // Naira (0 = use plan price)
 
-const PLANS = [
-  {id:'basic',       name:'Mango Basic',            price:'NGN 14,067', speed:'25Mbps',  category:'Residential', amount:1406700},
-  {id:'plus',        name:'Mango Plus',              price:'NGN 19,929', speed:'40Mbps',  category:'Residential', amount:1992900},
-  {id:'premium',     name:'Mango Premium',           price:'NGN 25,790', speed:'60Mbps',  category:'Residential', amount:2579000},
-  {id:'premium_plus',name:'Mango Premium+',          price:'NGN 35,172', speed:'80Mbps',  category:'Residential', amount:3517200},
-  {id:'gold',        name:'Mango Gold',              price:'NGN 40,447', speed:'120Mbps', category:'Residential', amount:4044700},
-  {id:'diamond',     name:'Mango Diamond',           price:'NGN 48,362', speed:'165Mbps', category:'Residential', amount:4836200},
-  {id:'platinum',    name:'Mango Platinum',          price:'NGN 58,245', speed:'200Mbps', category:'Residential', amount:5824500},
-  {id:'sme',         name:'Mango SME',               price:'NGN 29,306', speed:'65Mbps',  category:'Corporate',   amount:2930600},
-  {id:'corp_plus',   name:'Mango Corporate Plus',    price:'NGN 52,751', speed:'100Mbps', category:'Corporate',   amount:5275100},
-  {id:'corp_premium',name:'Mango Corporate Premium', price:'NGN 58,613', speed:'140Mbps', category:'Corporate',   amount:5861300},
-  {id:'preferred',   name:'Mango Preferred',         price:'NGN 67,404', speed:'200Mbps', category:'Corporate',   amount:6740400},
-  {id:'advantage',   name:'Mango Advantage',         price:'NGN 89,648', speed:'250Mbps', category:'Corporate',   amount:8964800},
-  {id:'ultimate',    name:'Mango Ultimate',          price:'NGN 107,578',speed:'350Mbps', category:'Corporate',   amount:10757800},
-];
-
+let allPlans     = [];
 let selectedPlan = null;
+let selectedZone = '';
 let selectedDate = null;
 let fileData = {passportPhoto: null, govtId: null, proofOfAddress: null};
 let currentStep = 1;
 let calYear, calMonth;
 
-// Render plans
-function renderPlans() {
+async function onZoneChange() {
+  const zone = document.getElementById('zoneSelect').value;
+  selectedZone = zone;
+  selectedPlan = null;
+  document.getElementById('zoneError').style.display = 'none';
+  document.getElementById('planError').style.display = 'none';
+
+  if (!zone) {
+    document.getElementById('plansList').style.display = 'none';
+    return;
+  }
+
+  document.getElementById('plansLoading').style.display = 'block';
+  document.getElementById('plansList').style.display = 'none';
+
+  try {
+    const res = await fetch('/api/plans.php?zone=' + encodeURIComponent(zone));
+    allPlans = await res.json();
+    renderPlans(allPlans);
+    document.getElementById('plansList').style.display = 'block';
+  } catch(e) {
+    alert('Failed to load plans. Please try again.');
+  } finally {
+    document.getElementById('plansLoading').style.display = 'none';
+  }
+}
+
+function renderPlans(plans) {
   ['Residential','Corporate'].forEach(cat => {
     const el = document.getElementById(cat.toLowerCase() + 'Plans');
-    PLANS.filter(p => p.category === cat).forEach(p => {
-      el.innerHTML += `<div class="col-md-6"><div class="plan-card" id="plan_${p.id}" onclick="selectPlan('${p.id}')">
+    el.innerHTML = '';
+    plans.filter(p => p.category === cat).forEach(p => {
+      el.innerHTML += `<div class="col-md-6"><div class="plan-card" id="plan_${p.id}" onclick="selectPlan(${p.id})">
         <i class="bi bi-check-circle-fill plan-check"></i>
         <div class="d-flex justify-content-between align-items-start">
           <div>
@@ -296,8 +331,9 @@ function renderPlans() {
 
 function selectPlan(id) {
   document.querySelectorAll('.plan-card').forEach(c => c.classList.remove('selected'));
-  document.getElementById('plan_' + id).classList.add('selected');
-  selectedPlan = PLANS.find(p => p.id === id);
+  const card = document.getElementById('plan_' + id);
+  if (card) card.classList.add('selected');
+  selectedPlan = allPlans.find(p => p.id == id);
   document.getElementById('planError').style.display = 'none';
 }
 
@@ -364,6 +400,7 @@ function handleUpload(input, field) {
 // Validation
 function validate(step) {
   if (step === 1) {
+    if (!selectedZone) { document.getElementById('zoneError').style.display = 'block'; return false; }
     if (!selectedPlan) { document.getElementById('planError').style.display = 'block'; return false; }
   }
   if (step === 2) {
@@ -388,11 +425,14 @@ function validate(step) {
   return true;
 }
 
+const ZONE_LABELS = {default:'Rest of Lagos (General)', oniru:'Oniru', abuja_banex:'Abuja / Banex'};
+
 function renderReview() {
   const p = selectedPlan;
   const opts = { weekday:'long', year:'numeric', month:'long', day:'numeric' };
   document.getElementById('reviewContent').innerHTML = `
     <div class="row g-2 small">
+      <div class="col-6"><div class="text-muted">Zone</div><div class="fw-bold">${ZONE_LABELS[selectedZone] || selectedZone}</div></div>
       <div class="col-6"><div class="text-muted">Plan</div><div class="fw-bold">${p.name} — ${p.speed}</div></div>
       <div class="col-6"><div class="text-muted">Price</div><div class="fw-bold text-success">${p.price}/mo</div></div>
       <div class="col-6"><div class="text-muted">Name</div><div>${val('firstName')} ${val('lastName')}</div></div>
@@ -474,10 +514,20 @@ async function pay() {
     return;
   }
 
+  // Determine amount in kobo: use installation_cost setting if set, otherwise parse plan price
+  let amountKobo;
+  if (INSTALLATION_COST > 0) {
+    amountKobo = INSTALLATION_COST * 100;
+  } else {
+    // Parse plan price string e.g. "NGN 14,067" → 1406700 kobo
+    const priceNaira = parseFloat(selectedPlan.price.replace(/[^0-9.]/g, '')) || 0;
+    amountKobo = Math.round(priceNaira * 100);
+  }
+
   const handler = PaystackPop.setup({
     key: PAYSTACK_KEY,
     email: val('email'),
-    amount: selectedPlan.amount,
+    amount: amountKobo,
     currency: 'NGN',
     ref: 'MN_' + Date.now(),
     metadata: { name: val('firstName') + ' ' + val('lastName'), plan: selectedPlan.name },
@@ -506,7 +556,6 @@ async function pay() {
 }
 
 // Init
-renderPlans();
 initCalendar();
 </script>
 </body>
