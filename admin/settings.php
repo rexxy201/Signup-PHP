@@ -28,6 +28,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         $success = 'SMTP settings saved.';
 
+    } elseif ($action === 'general') {
+        $cost = (int)str_replace(',', '', $_POST['installation_cost'] ?? '0');
+        if ($cost > 0) setSetting('installation_cost', (string)$cost);
+        setSetting('signup_note', trim($_POST['signup_note'] ?? ''));
+        $success = 'General settings saved.';
+
     } elseif ($action === 'notifications') {
         setSetting('notification_emails', trim($_POST['notification_emails'] ?? ''));
         $success = 'Notification emails saved.';
@@ -81,6 +87,7 @@ body{background:#f8f9fa}
   <div class="sidebar-brand">🥭 MangoNet</div>
   <nav class="mt-2">
     <a href="/admin/"><i class="bi bi-grid me-2"></i>Dashboard</a>
+    <a href="/admin/plans.php"><i class="bi bi-list-check me-2"></i>Manage Plans</a>
     <a href="/admin/settings.php" class="active"><i class="bi bi-gear me-2"></i>Settings</a>
     <a href="/admin/logout.php"><i class="bi bi-box-arrow-right me-2"></i>Logout</a>
   </nav>
@@ -132,6 +139,35 @@ body{background:#f8f9fa}
               <div class="form-text">Separate multiple emails with commas</div>
             </div>
             <button class="btn btn-primary w-100" type="submit">Save Recipients</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- General / Installation Cost -->
+    <div class="col-12">
+      <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white fw-semibold">General Settings</div>
+        <div class="card-body">
+          <form method="post">
+            <input type="hidden" name="action" value="general">
+            <div class="row g-3">
+              <div class="col-md-4">
+                <label class="form-label small">Installation Cost (₦, in Naira)</label>
+                <input class="form-control" name="installation_cost" type="number" min="0"
+                  value="<?= htmlspecialchars(getSetting('installation_cost','0')) ?>" placeholder="e.g. 30000">
+                <div class="form-text">Amount charged via Paystack at signup. Enter 0 to use each plan's monthly price.</div>
+              </div>
+              <div class="col-md-8">
+                <label class="form-label small">Signup Note (shown on review &amp; pay step)</label>
+                <input class="form-control" name="signup_note"
+                  value="<?= htmlspecialchars(getSetting('signup_note')) ?>"
+                  placeholder="e.g. Installation fee includes one month free subscription up to Premium Plan.">
+              </div>
+              <div class="col-12">
+                <button class="btn btn-primary" type="submit">Save General Settings</button>
+              </div>
+            </div>
           </form>
         </div>
       </div>
