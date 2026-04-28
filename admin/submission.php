@@ -47,6 +47,7 @@ body{background:#f8f9fa}
   <div class="sidebar-brand">🥭 MangoNet</div>
   <nav class="mt-2">
     <a href="/admin/"><i class="bi bi-grid me-2"></i>Dashboard</a>
+    <a href="/admin/plans.php"><i class="bi bi-list-check me-2"></i>Manage Plans</a>
     <a href="/admin/settings.php"><i class="bi bi-gear me-2"></i>Settings</a>
     <a href="/admin/logout.php"><i class="bi bi-box-arrow-right me-2"></i>Logout</a>
   </nav>
